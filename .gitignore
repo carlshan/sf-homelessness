@@ -55,3 +55,6 @@ target/
 
 # Ignoring data
 data/
+
+# Ignoring ipython notebook checkpoints
+ipynb_checkpoints/
