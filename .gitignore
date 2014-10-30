@@ -58,3 +58,4 @@ data/
 
 # Ignoring ipython notebook checkpoints
 ipynb_checkpoints/
+exploration/.ipynb_checkpoints/
