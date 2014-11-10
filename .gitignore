@@ -55,6 +55,7 @@ target/
 
 # Ignoring data
 data/
+data_exports/
 
 # Ignoring ipython notebook checkpoints
 ipynb_checkpoints/
