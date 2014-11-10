@@ -26,6 +26,7 @@ def get_program():
     program['Adult?'] = ~program['Child?']
 
     # deduplicate individuals
+    program['Raw Subject Unique Identifier'] = program['Subject Unique Identifier']
     #program['Subject Unique Identifier'] = program_strict_deduplicate_individuals(program)
     program['Subject Unique Identifier'] = program_fuzzy_deduplicate_individuals(program)
 
