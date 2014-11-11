@@ -127,6 +127,8 @@ def get_cp_client():
     # generate families
     client['Familyid'] = client_generate_families(client)
 
+    client = client.merge(get_cp_case(), left_on='Caseid', right_on='caseid')
+
     return client
 
 def client_fuzzy_deduplicate_individuals(client):
