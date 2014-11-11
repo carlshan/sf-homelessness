@@ -6,10 +6,10 @@ import networkx as nx
 import cp
 
 def get_program():
-    program = pd.read_csv('../data/program with family.csv')
+    program = pd.read_csv('../data/hmis/program with family.csv')
 
     # join personal information
-    client_de_identified = pd.read_csv('../data/client de-identified.csv')
+    client_de_identified = pd.read_csv('../data/hmis/client de-identified.csv')
     program = program.merge(client_de_identified , on='Subject Unique Identifier')
 
     # convert dates
@@ -41,14 +41,14 @@ def get_program():
 def program_strict_deduplicate_individuals(program):
     # We do an inner join because, since we pulled the program data after doing de-duplication,
     # there are some clients who appear in program but don't appear in hmis_client_duplicates.
-    hmis_client_duplicates = pd.read_csv('../data/hmis_client_duplicates.csv')
+    hmis_client_duplicates = pd.read_csv('../data/hmis/hmis_client_duplicates_strict.csv')
     program = program.merge(hmis_client_duplicates, on='Subject Unique Identifier', how='inner')
     #program['Raw Subject Unique Identifier'] = program['Subject Unique Identifier']
     return program['Duplicate ClientID'].fillna(program['Subject Unique Identifier'])
 
 def program_fuzzy_deduplicate_individuals(program):
     # generate Deduplicated Subject Unique Identifiers by finding the min SUID for every group
-    hmis_lp_duplicates = pd.read_csv('../data/HMIS duplicates using link plus.csv')
+    hmis_lp_duplicates = pd.read_csv('../data/hmis/hmis_client_duplicates_link_plus.csv')
     hmis_lp_duplicates = hmis_lp_duplicates.drop_duplicates('Subject Unique Identifier')
     hmis_lp_duplicates['Deduplicated Subject Unique Identifier'] = hmis_lp_duplicates.groupby('Set ID')['Subject Unique Identifier'].transform(min)
     # merge those Deduplicated Subject Unique Identifiers
@@ -85,10 +85,10 @@ def program_generate_family_characteristics(program):
     return program
 
 def get_cp_case():
-    case = pd.read_csv("../data/cp_case.csv")
+    case = pd.read_csv("../data/connecting_point/case.csv")
 
     # join causes of homelessness
-    causes_of_homelessness = pd.read_csv("../data/cp_causes_of_homelessness.csv")
+    causes_of_homelessness = pd.read_csv("../data/connecting_point/causes_of_homelessness.csv")
     causes_of_homelessness['HomelesscauseId'] = causes_of_homelessness['HomelesscauseId'].replace(cp.causes_of_homelessness)
     causes_of_homelessness.columns = ['caseid','Homelesscause']
     #case = case.merge(causes_of_homelessness, on='caseid')
@@ -96,7 +96,7 @@ def get_cp_case():
     return case
 
 def get_cp_client():
-    client = pd.read_csv("../data/cp_client.csv")
+    client = pd.read_csv("../data/connecting_point/client.csv")
 
     # deduplicate individuals
     #cp_client_duplicates = pd.read_csv('../data/cp_client_duplicates.csv')
