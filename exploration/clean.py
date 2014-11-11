@@ -31,13 +31,15 @@ def get_program():
     program['Subject Unique Identifier'] = program_fuzzy_deduplicate_individuals(program)
 
     # generate families
-    program = program.merge(program_generate_families(program), left_on='Subject Unique Identifier', right_index=True, how='left')
+    #program = program.merge(program_generate_families(program), left_on='Subject Unique Identifier', right_index=True, how='left')
 
     # generate family characteristics
-    program = program_generate_family_characteristics(program)
+    #program = program_generate_family_characteristics(program)
 
     return program
 
+# NOTE: this method isn't in use anymore.  If it starts being used again, we should generalize it to work with connecting
+# point data as well, like link_plus_deduplicate_individuals is.
 def program_strict_deduplicate_individuals(program):
     # We do an inner join because, since we pulled the program data after doing de-duplication,
     # there are some clients who appear in program but don't appear in hmis_client_duplicates.
@@ -47,14 +49,7 @@ def program_strict_deduplicate_individuals(program):
     return program['Duplicate ClientID'].fillna(program['Subject Unique Identifier'])
 
 def program_fuzzy_deduplicate_individuals(program):
-    # generate Deduplicated Subject Unique Identifiers by finding the min SUID for every group
-    hmis_lp_duplicates = pd.read_csv('../data/hmis/hmis_client_duplicates_link_plus.csv')
-    hmis_lp_duplicates = hmis_lp_duplicates.drop_duplicates('Subject Unique Identifier')
-    hmis_lp_duplicates['Deduplicated Subject Unique Identifier'] = hmis_lp_duplicates.groupby('Set ID')['Subject Unique Identifier'].transform(min)
-    # merge those Deduplicated Subject Unique Identifiers
-    program = program.merge(hmis_lp_duplicates[['Subject Unique Identifier','Deduplicated Subject Unique Identifier']], on='Subject Unique Identifier', how='left')
-    #program['Raw Subject Unique Identifier'] = program['Subject Unique Identifier']
-    return program['Deduplicated Subject Unique Identifier'].fillna(program['Subject Unique Identifier'])
+    return link_plus_deduplicate_individuals(program, 'Subject Unique Identifier', '../data/hmis/hmis_client_duplicates_link_plus.csv')
 
 # For now, we're just using connected components: if persons A & B enter a shelter at the same time with the same
 # Family Site Identifier, then we call them connected; if persons B & C do the same, then we call them connected,
@@ -99,13 +94,13 @@ def get_cp_client():
     client = pd.read_csv("../data/connecting_point/client.csv")
 
     # deduplicate individuals
-    #cp_client_duplicates = pd.read_csv('../data/cp_client_duplicates.csv')
-    #client = client.merge(cp_client_duplicates[['clientid', 'Duplicate ClientID']], left_on='Clientid', right_on='clientid')
-    #client['Nondeduplicated Clientid'] = client['Clientid']
-    #client['Clientid'] = client['Duplicate ClientID'].fillna(client['Clientid'])
-    #client.drop(['clientid', 'Duplicate ClientID'], axis=1, inplace=True)
+    client['Raw Clientid'] = client['Clientid']
+    client['Clientid'] = client_fuzzy_deduplicate_individuals(client)
 
     return client
+
+def client_fuzzy_deduplicate_individuals(client):
+    return link_plus_deduplicate_individuals(client, 'Clientid', '../data/connecting_point/cp_client_duplicates_link_plus.csv')
 
 def get_program_age_entered(row):
     start_date = row['Program Start Date']
@@ -114,3 +109,13 @@ def get_program_age_entered(row):
         return np.NaN
     else:
         return dateutil.relativedelta.relativedelta(start_date, dob).years
+
+def link_plus_deduplicate_individuals(df, ind_id, lp_fname):
+    # name of deduplicated individual id column
+    dd_ind_id = 'Deduplicated '+ind_id
+    # generate dd_ind_id by finding the min ind_id for every group
+    lp_duplicates = pd.read_csv(lp_fname)
+    lp_duplicates = lp_duplicates.drop_duplicates(ind_id)
+    lp_duplicates[dd_ind_id] = lp_duplicates.groupby('Set ID')[ind_id].transform(min)
+    # merge those dd_ind_ids
+    return df.merge(lp_duplicates[[ind_id, dd_ind_id]], on=ind_id, how='left')[dd_ind_id].fillna(df[ind_id])
