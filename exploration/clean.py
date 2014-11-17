@@ -5,6 +5,8 @@ import networkx as nx
 
 import cp
 
+ADULT_AGE = 18
+
 def get_program():
     program = pd.read_csv('../data/hmis/program with family.csv')
 
@@ -22,7 +24,7 @@ def get_program():
 
     # get age and child/adult status
     program['Age Entered'] = program.apply(get_program_age_entered, axis=1)
-    program['Child?'] = program['Age Entered'] < 18
+    program['Child?'] = program['Age Entered'] < ADULT_AGE
     program['Adult?'] = ~program['Child?']
 
     # deduplicate individuals
@@ -53,6 +55,21 @@ def program_fuzzy_deduplicate_individuals(program):
 
 def program_generate_families(program, ind_id='Subject Unique Identifier', fid='Family Site Identifier'):
     return generate_families(program, ind_id, fid, edge_fields=['Family Site Identifier', 'Program Start Date'])
+
+def get_program_age_entered(row):
+    start_date = row['Program Start Date']
+    dob = row['DOB']
+    if start_date is pd.NaT or dob is pd.NaT:
+        return np.NaN
+    else:
+        return dateutil.relativedelta.relativedelta(start_date, dob).years
+
+def program_generate_family_characteristics(program):
+    program['With Child?'] = program.groupby(['Family Identifier','Program Start Date'])['Child?'].transform(any)
+    program['With Adult?'] = program.groupby(['Family Identifier','Program Start Date'])['Adult?'].transform(any)
+    program['With Family?'] = program['With Child?'] & program['With Adult?']
+    program['Family?'] = program.groupby(['Family Identifier'])['With Family?'].transform(any)
+    return program
 
 # If persons A & B enter a shelter at the same time with the same Family Site Identifier, then we call them connected;
 # if persons B & C do the same, then we call them connected, and thus A & C are connected as well.
@@ -99,22 +116,8 @@ def generate_families(df, ind_id, fid, edge_fields):
     # merge resulting dataframe with original df to index it correctly, then return the series of target_fids
     return df.merge(fids, left_on=ind_id, right_index=True, how='left')[target_fid]
 
-def program_generate_family_characteristics(program):
-    program['With Child?'] = program.groupby(['Family Identifier','Program Start Date'])['Child?'].transform(any)
-    program['With Adult?'] = program.groupby(['Family Identifier','Program Start Date'])['Adult?'].transform(any)
-    program['With Family?'] = program['With Child?'] & program['With Adult?']
-    program['Family?'] = program.groupby(['Family Identifier'])['With Family?'].transform(any)
-    return program
-
 def get_cp_case():
     case = pd.read_csv("../data/connecting_point/case.csv")
-
-    # join causes of homelessness
-    causes_of_homelessness = pd.read_csv("../data/connecting_point/causes_of_homelessness.csv")
-    causes_of_homelessness['HomelesscauseId'] = causes_of_homelessness['HomelesscauseId'].replace(cp.causes_of_homelessness)
-    causes_of_homelessness.columns = ['caseid','Homelesscause']
-    #case = case.merge(causes_of_homelessness, on='caseid')
-
     return case
 
 def get_cp_client():
@@ -136,14 +139,6 @@ def client_fuzzy_deduplicate_individuals(client):
 
 def client_generate_families(client, ind_id='Clientid', fid='Caseid'):
     return generate_families(client, ind_id, fid, edge_fields=[fid])
-
-def get_program_age_entered(row):
-    start_date = row['Program Start Date']
-    dob = row['DOB']
-    if start_date is pd.NaT or dob is pd.NaT:
-        return np.NaN
-    else:
-        return dateutil.relativedelta.relativedelta(start_date, dob).years
 
 def link_plus_deduplicate_individuals(df, ind_id, lp_fname):
     # name of deduplicated individual id column
