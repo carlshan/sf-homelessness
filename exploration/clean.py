@@ -53,8 +53,11 @@ def program_strict_deduplicate_individuals(program):
 def program_fuzzy_deduplicate_individuals(program):
     return link_plus_deduplicate_individuals(program, 'Subject Unique Identifier', '../data/hmis/hmis_client_duplicates_link_plus.csv')
 
-def program_generate_families(program, ind_id='Subject Unique Identifier', fid='Family Site Identifier'):
-    return generate_families(program, ind_id, fid, edge_fields=['Family Site Identifier', 'Program Start Date'])
+def program_generate_families(program):
+    return generate_families(program, ind_id='Subject Unique Identifier', fid='Family Site Identifier', edge_fields=['Family Site Identifier', 'Program Start Date'])
+
+def program_generate_family_characteristics(program):
+    return generate_family_characteristics(program, family_id='Family Identifier', edge_fields=['Family Site Identifier', 'Program Start Date'])
 
 def get_program_age_entered(row):
     start_date = row['Program Start Date']
@@ -64,12 +67,49 @@ def get_program_age_entered(row):
     else:
         return dateutil.relativedelta.relativedelta(start_date, dob).years
 
-def program_generate_family_characteristics(program):
-    program['With Child?'] = program.groupby(['Family Identifier','Program Start Date'])['Child?'].transform(any)
-    program['With Adult?'] = program.groupby(['Family Identifier','Program Start Date'])['Adult?'].transform(any)
-    program['With Family?'] = program['With Child?'] & program['With Adult?']
-    program['Family?'] = program.groupby(['Family Identifier'])['With Family?'].transform(any)
-    return program
+def get_cp_client():
+    client = pd.read_csv("../data/connecting_point/client.csv")
+
+    # deduplicate individuals
+    client['Raw Clientid'] = client['Clientid']
+    client['Clientid'] = client_fuzzy_deduplicate_individuals(client)
+
+    # generate child/adult status
+    client['Child?'] = client['age'] < ADULT_AGE
+    client['Adult?'] = ~client['Child?']
+
+    # generate families
+    client['Familyid'] = client_generate_families(client)
+
+    # generate family characteristics
+    client = client_generate_family_characteristics(client)
+
+    client = client.merge(get_cp_case(), left_on='Caseid', right_on='caseid')
+
+    return client
+
+def get_cp_case():
+    case = pd.read_csv("../data/connecting_point/case.csv")
+    return case
+
+def client_fuzzy_deduplicate_individuals(client):
+    return link_plus_deduplicate_individuals(client, 'Clientid', '../data/connecting_point/cp_client_duplicates_link_plus.csv')
+
+def client_generate_families(client):
+    return generate_families(client, ind_id='Clientid', fid='Caseid', edge_fields=['Caseid'])
+
+def client_generate_family_characteristics(client):
+    return generate_family_characteristics(client, family_id='Familyid', edge_fields=['Caseid'])
+
+def link_plus_deduplicate_individuals(df, ind_id, lp_fname):
+    # name of deduplicated individual id column
+    dd_ind_id = 'Deduplicated '+ind_id
+    # generate dd_ind_id by finding the min ind_id for every group
+    lp_duplicates = pd.read_csv(lp_fname)
+    lp_duplicates = lp_duplicates.drop_duplicates(ind_id)
+    lp_duplicates[dd_ind_id] = lp_duplicates.groupby('Set ID')[ind_id].transform(min)
+    # merge those dd_ind_ids
+    return df.merge(lp_duplicates[[ind_id, dd_ind_id]], on=ind_id, how='left')[dd_ind_id].fillna(df[ind_id])
 
 # If persons A & B enter a shelter at the same time with the same Family Site Identifier, then we call them connected;
 # if persons B & C do the same, then we call them connected, and thus A & C are connected as well.
@@ -83,7 +123,7 @@ def generate_families(df, ind_id, fid, edge_fields):
     :param ind_id: The column to use as the individual identifier, (e.g. 'Subject Unique Identifier' or 'Clientid').
     :type ind_id: str.
 
-    :param fid: The field that represents the family or case (e.g. 'Family Site Identnfier' or 'Caseid').  This field
+    :param fid: The field that represents the family or case (e.g. 'Family Site Identifier' or 'Caseid').  This field
     gets filled in for individuals in order to properly generate family IDs for them.
     :type fid: str.
 
@@ -116,36 +156,9 @@ def generate_families(df, ind_id, fid, edge_fields):
     # merge resulting dataframe with original df to index it correctly, then return the series of target_fids
     return df.merge(fids, left_on=ind_id, right_index=True, how='left')[target_fid]
 
-def get_cp_case():
-    case = pd.read_csv("../data/connecting_point/case.csv")
-    return case
-
-def get_cp_client():
-    client = pd.read_csv("../data/connecting_point/client.csv")
-
-    # deduplicate individuals
-    client['Raw Clientid'] = client['Clientid']
-    client['Clientid'] = client_fuzzy_deduplicate_individuals(client)
-
-    # generate families
-    client['Familyid'] = client_generate_families(client)
-
-    client = client.merge(get_cp_case(), left_on='Caseid', right_on='caseid')
-
-    return client
-
-def client_fuzzy_deduplicate_individuals(client):
-    return link_plus_deduplicate_individuals(client, 'Clientid', '../data/connecting_point/cp_client_duplicates_link_plus.csv')
-
-def client_generate_families(client, ind_id='Clientid', fid='Caseid'):
-    return generate_families(client, ind_id, fid, edge_fields=[fid])
-
-def link_plus_deduplicate_individuals(df, ind_id, lp_fname):
-    # name of deduplicated individual id column
-    dd_ind_id = 'Deduplicated '+ind_id
-    # generate dd_ind_id by finding the min ind_id for every group
-    lp_duplicates = pd.read_csv(lp_fname)
-    lp_duplicates = lp_duplicates.drop_duplicates(ind_id)
-    lp_duplicates[dd_ind_id] = lp_duplicates.groupby('Set ID')[ind_id].transform(min)
-    # merge those dd_ind_ids
-    return df.merge(lp_duplicates[[ind_id, dd_ind_id]], on=ind_id, how='left')[dd_ind_id].fillna(df[ind_id])
+def generate_family_characteristics(df, family_id, edge_fields):
+    df['With Child?'] = df.groupby(edge_fields)['Child?'].transform(any)
+    df['With Adult?'] = df.groupby(edge_fields)['Adult?'].transform(any)
+    df['With Family?'] = df['With Child?'] & df['With Adult?']
+    df['Family?'] = df.groupby(family_id)['With Family?'].transform(any)
+    return df
