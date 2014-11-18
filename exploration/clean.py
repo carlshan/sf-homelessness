@@ -90,6 +90,13 @@ def get_cp_client():
 
 def get_cp_case():
     case = pd.read_csv("../data/connecting_point/case.csv")
+
+    # join causes of homelessness
+    causes_of_homelessness = pd.read_csv("../data/connecting_point/causes_of_homelessness.csv")
+    causes_of_homelessness['HomelesscauseId'] = causes_of_homelessness['HomelesscauseId'].replace(cp.causes_of_homelessness)
+    causes_of_homelessness.columns = ['caseid','Homelesscause']
+    case = case.merge(causes_of_homelessness, on='caseid')
+
     return case
 
 def client_fuzzy_deduplicate_individuals(client):
