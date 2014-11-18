@@ -135,6 +135,7 @@ def generate_families(df, ind_id, fid, edge_fields):
     # begin by getting relevant fields
     families = df[[ind_id]+edge_fields].copy()
     # fill in individuals' FSI with their negated SUID
+    # NOTE: this assumes that no individual has a non-positive ind_id
     families[fid] = families[fid].fillna(-families[ind_id])
     families = families.set_index(edge_fields)
 
