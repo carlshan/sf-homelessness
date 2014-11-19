@@ -70,13 +70,13 @@ def get_program_age_entered(row):
 def get_cp_client():
     client = pd.read_csv("../data/connecting_point/client.csv")
 
-    # deduplicate individuals
-    client['Raw Clientid'] = client['Clientid']
-    client['Clientid'] = client_fuzzy_deduplicate_individuals(client)
-
     # generate child/adult status
     client['Child?'] = client['age'] < ADULT_AGE
     client['Adult?'] = ~client['Child?']
+
+    # deduplicate individuals
+    client['Raw Clientid'] = client['Clientid']
+    client['Clientid'] = client_fuzzy_deduplicate_individuals(client)
 
     # generate families
     client['Familyid'] = client_generate_families(client)
@@ -95,7 +95,7 @@ def get_cp_case():
     causes_of_homelessness = pd.read_csv("../data/connecting_point/causes_of_homelessness.csv")
     causes_of_homelessness['HomelesscauseId'] = causes_of_homelessness['HomelesscauseId'].replace(cp.causes_of_homelessness)
     causes_of_homelessness.columns = ['caseid','Homelesscause']
-    case = case.merge(causes_of_homelessness, on='caseid')
+    case = case.merge(causes_of_homelessness, on='caseid', how='left')
 
     return case
 
