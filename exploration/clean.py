@@ -12,7 +12,9 @@ def get_program():
 
     # join personal information
     client_de_identified = pd.read_csv('../data/hmis/client de-identified.csv')
-    program = program.merge(client_de_identified , on='Subject Unique Identifier')
+    # we're taking an inner join here because the program csv got pulled after the client csv, because we added
+    # the family site identifier column to program
+    program = program.merge(client_de_identified , on='Subject Unique Identifier', how='inner')
 
     # convert dates
     program['Raw Program Start Date'] = program['Program Start Date']
@@ -84,7 +86,7 @@ def get_cp_client():
     # generate family characteristics
     client = client_generate_family_characteristics(client)
 
-    client = client.merge(get_cp_case(), left_on='Caseid', right_on='caseid')
+    client = client.merge(get_cp_case(), left_on='Caseid', right_on='caseid', how='right')
 
     return client
 
