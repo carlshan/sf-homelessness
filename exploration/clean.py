@@ -166,6 +166,8 @@ def cp_convert_dates(cp):
     cp['servstart'] = pd.to_datetime(cp['servstart'])
     cp['Raw servend'] = cp['servend']
     cp['servend'] = pd.to_datetime(cp['servend'])
+    cp['Raw LastUpdateDate'] = cp['LastUpdateDate']
+    cp['LastUpdateDate'] = pd.to_datetime(cp['LastUpdateDate'])
 
     return cp
 
