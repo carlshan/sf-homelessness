@@ -3,8 +3,6 @@ import numpy as np
 import dateutil
 import networkx as nx
 
-import cp
-
 ADULT_AGE = 18
 
 def get_hmis_cp():
