@@ -6,6 +6,10 @@ import networkx as nx
 ADULT_AGE = 18
 
 def get_hmis_cp():
+    """
+    Pull in relevant CSVs from `../data/`, merge them, clean them, and return a tuple containing the cleaned HMIS data
+    and the cleaned Connecting Point data.
+    """
     # get raw dataframes
     hmis = get_raw_hmis()
     cp = get_raw_cp()
@@ -32,6 +36,9 @@ def get_hmis_cp():
 ###################
 
 def get_raw_hmis():
+    """
+    Pull in relevant CSVs from `../data/`, merge them, and return the raw HMIS dataframe.
+    """
     program = pd.read_csv('../data/hmis/program with family.csv')
     client = pd.read_csv('../data/hmis/client de-identified.csv')
     # NOTE we're taking an inner join here because the program csv got pulled after
@@ -41,6 +48,9 @@ def get_raw_hmis():
     return program
 
 def get_raw_cp():
+    """
+    Pull in relevant CSVs from `../data/`, merge them, and return the raw Connecting Point dataframe.
+    """
     case = pd.read_csv("../data/connecting_point/case.csv")
     case = case.rename(columns={'caseid': 'Caseid'})
     client = pd.read_csv("../data/connecting_point/client.csv")
@@ -53,20 +63,36 @@ def get_raw_cp():
 #############################################
 
 def get_client_family_ids(hmis, cp):
+    """
+    Given raw HMIS and Connecting Point dataframes, de-duplicate individuals and determine families across time.
+
+    See the README for more information about rationale and methodology.
+
+    The graph contains IDs from both HMIS and Connecting Point, so each vertex is represented as a tuple `(c, id)`,
+    where `c` is either `'h'` or `'c'`, to indicate whether the `id` corresponds to a row in HMIS or Connecting Point.
+    For example, `('h', 1234)` represents the row(s) in HMIS with individual ID `1234`, and `('c',5678)` represents the
+    row(s) in Connecting Point with individual ID `5678`.
+
+    :param hmis: HMIS dataframe.
+    :type hmis: Pandas.Dataframe.
+
+    :param cp: Connecting Point dataframe.
+    :type cp: Pandas.Dataframe.
+    """
     hmis = hmis.rename(columns={'Subject Unique Identifier': 'Raw Subject Unique Identifier'})
     cp = cp.rename(columns={'Clientid': 'Raw Clientid'})
 
-    # create individuals graph
+    # create graph of individuals
     G_individuals = nx.Graph()
     G_individuals.add_nodes_from([('h', v) for v in hmis['Raw Subject Unique Identifier'].values])
     G_individuals.add_nodes_from([('c', v) for v in cp['Raw Clientid'].values])
 
-    # add edges to compute individuals
+    # add edges between same individuals
     G_individuals.add_edges_from(group_edges('h', pd.read_csv('../data/hmis/hmis_client_duplicates_link_plus.csv'), ['Set ID'], 'Subject Unique Identifier'))
     G_individuals.add_edges_from(group_edges('c', pd.read_csv('../data/connecting_point/cp_client_duplicates_link_plus.csv'), ['Set ID'], 'Clientid'))
     G_individuals.add_edges_from(matching_edges())
 
-    # copy individuals graph and add edges to compute families
+    # copy graph of individuals and add edges between individuals in the same family
     G_families = G_individuals.copy()
     G_families.add_edges_from(group_edges('h', hmis, ['Family Site Identifier','Program Start Date'], 'Raw Subject Unique Identifier'))
     G_families.add_edges_from(group_edges('c', cp, ['Caseid'], 'Raw Clientid'))
@@ -77,13 +103,13 @@ def get_client_family_ids(hmis, cp):
     hmis_families = [get_ids_from_nodes('h', c) for c in nx.connected_components(G_families)]
     cp_families = [get_ids_from_nodes('c', c) for c in nx.connected_components(G_families)]
 
-    # create dataframes
+    # create dataframes to merge
     hmis_individuals = create_dataframe_from_grouped_ids(hmis_individuals, 'Subject Unique Identifier')
     hmis_families = create_dataframe_from_grouped_ids(hmis_families, 'Family Identifier')
     cp_individuals = create_dataframe_from_grouped_ids(cp_individuals, 'Clientid')
     cp_families = create_dataframe_from_grouped_ids(cp_families, 'Familyid')
 
-    # merge
+    # merge into hmis and cp dataframes
     hmis = hmis.merge(hmis_individuals, left_on='Raw Subject Unique Identifier', right_index=True, how='left')
     hmis = hmis.merge(hmis_families, left_on='Raw Subject Unique Identifier', right_index=True, how='left')
     cp = cp.merge(cp_individuals, left_on='Raw Clientid', right_index=True, how='left')
@@ -93,17 +119,17 @@ def get_client_family_ids(hmis, cp):
 
 def group_edges(node_prefix, df, group_ids, individual_id):
     """
-    group_edges returns the edge list from a grouping dataframe, either a Link Plus fuzzy matching,
-    or a dataframe where people are connected by appearing in the same family or case.
+    Return the edge list from a grouping dataframe, either a Link Plus fuzzy matching or a dataframe, where people are
+    connected by appearing in the same family or case.
 
     :param node_prefix: prefix for the nodes in the edge list.
-    :type edge_fields: str.
+    :type node_prefix: str.
 
     :param df: dataframe.
     :type df: Pandas.Dataframe.
 
     :param group_ids: grouping column names in grouping csv.
-    :type group_ids: str.
+    :type group_ids: [str].
 
     :param individual_id: individual id column name in grouping csv.
     :type individual_id: str.
@@ -114,15 +140,14 @@ def group_edges(node_prefix, df, group_ids, individual_id):
 
 def matching_edges():
     """
-    matching_edges returns the edge list from a Connecting Point to HMIS matching csv.
+    Returns the edge list from a Connecting Point to HMIS matching CSV.
     """
     matching = pd.read_csv('../data/matching/cp_hmis_match_results.csv').dropna()
     return [(('c',v[0]),('h',v[1])) for v in matching[['clientid','Subject Unique Identifier']].values]
 
 def get_ids_from_nodes(node_prefix, nodes):
     """
-    get_ids_from_subgraph takes a list of nodes from G and returns a list of the
-    ids contained in only the nodes with the given prefix.
+    Take a list of nodes from G and returns a list of the ids of only the nodes with the given prefix.
 
     param node_prefix: prefix for the nodes to keep.
     type node_prefix: str.
@@ -134,8 +159,24 @@ def get_ids_from_nodes(node_prefix, nodes):
 
 def create_dataframe_from_grouped_ids(grouped_ids, col):
     """
-    create_dataframe_from_grouped_ids takes a list of ids, grouped by individual or family, and creates
-    a dataframe where each id in a group has the same id in col.
+    Take a list of IDs, grouped by individual or family, and creates a dataframe where each ID in a group has the same
+    id in `col`.
+
+    For example, for the arguments `[[1, 2, 3], [4, 5, 6], [7, 8], [9]]` and `'Family Identifier'`, return a single-column dataframe:
+
+    ```
+      Family Identifier
+    -+-----------------
+    1 0
+    2 0
+    3 0
+    4 1
+    5 1
+    6 1
+    7 2
+    8 2
+    9 3
+    ```
 
     param grouped_ids: a list of lists of ids.
     type grouped_ids: [[int]].
@@ -150,6 +191,12 @@ def create_dataframe_from_grouped_ids(grouped_ids, col):
 #########################
 
 def hmis_convert_dates(hmis):
+    """
+    Given an HMIS dataframe, convert columns with dates to datetime columns.
+
+    :param hmis: HMIS dataframe.
+    :type hmis: Pandas.Dataframe.
+    """
     hmis['Raw Program Start Date'] = hmis['Program Start Date']
     hmis['Program Start Date'] = pd.to_datetime(hmis['Program Start Date'])
     hmis['Raw Program End Date'] = hmis['Program End Date']
@@ -160,6 +207,12 @@ def hmis_convert_dates(hmis):
     return hmis
 
 def cp_convert_dates(cp):
+    """
+    Given a Connecting Point dataframe, convert columns with dates to datetime columns.
+
+    :param cp: Connecting Point dataframe.
+    :type cp: Pandas.Dataframe.
+    """
     cp['Raw servstart'] = cp['servstart']
     cp['servstart'] = pd.to_datetime(cp['servstart'])
     cp['Raw servend'] = cp['servend']
@@ -174,6 +227,12 @@ def cp_convert_dates(cp):
 ####################################
 
 def hmis_child_status(hmis):
+    """
+    Given an HMIS dataframe, add `Child?` and `Adult?` columns.
+
+    :param hmis: HMIS dataframe.
+    :type hmis: Pandas.Dataframe.
+    """
     hmis['Age Entered'] = hmis.apply(get_hmis_age_entered, axis=1)
     hmis['Child?'] = hmis['Age Entered'] < ADULT_AGE
     hmis['Adult?'] = ~hmis['Child?']
@@ -181,6 +240,12 @@ def hmis_child_status(hmis):
     return hmis
 
 def get_hmis_age_entered(row):
+    """
+    Given an HMIS row, compute the age of the client.
+
+    :param row: HMIS row.
+    :type row: Pandas.Series.
+    """
     start_date = row['Program Start Date']
     dob = row['DOB']
     if start_date is pd.NaT or dob is pd.NaT:
@@ -189,6 +254,12 @@ def get_hmis_age_entered(row):
         return dateutil.relativedelta.relativedelta(start_date, dob).years
 
 def cp_child_status(cp):
+    """
+    Given a Connecting Point dataframe, add `Child?` and `Adult?` columns.
+
+    :param cp: Connecting Point dataframe.
+    :type cp: Pandas.Dataframe.
+    """
     cp['Child?'] = cp['age'] < ADULT_AGE
     cp['Adult?'] = ~cp['Child?']
 
@@ -199,12 +270,36 @@ def cp_child_status(cp):
 ##############################################
 
 def hmis_generate_family_characteristics(hmis):
+    """
+    Given an HMIS dataframe, add columns regarding family structure.
+
+    :param hmis: HMIS dataframe.
+    :type hmis: Pandas.Dataframe.
+    """
     return generate_family_characteristics(hmis, family_id='Family Identifier', edge_fields=['Family Site Identifier', 'Program Start Date'])
 
 def cp_generate_family_characteristics(cp):
+    """
+    Given a Connecting Point dataframe, add columns regarding family structure.
+
+    :param cp: Connecting Point dataframe.
+    :type cp: Pandas.Dataframe.
+    """
     return generate_family_characteristics(cp, family_id='Familyid', edge_fields=['Caseid'])
 
 def generate_family_characteristics(df, family_id, edge_fields):
+    """
+    Given either an HMIS or a Connecting Point dataframe, add columns regarding family structure.
+
+    :param df: HMIS or Connecting point dataframe.
+    :type hmis: Pandas.Dataframe.
+
+    :param family_id: column name of family identifier.
+    :type family_id: str.
+
+    :param edge_fields: grouping column names.
+    :type edge_fields: [str].
+    """
     df['With Child?'] = df.groupby(edge_fields)['Child?'].transform(any)
     df['With Adult?'] = df.groupby(edge_fields)['Adult?'].transform(any)
     df['With Family?'] = df['With Child?'] & df['With Adult?']
