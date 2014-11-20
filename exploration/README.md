@@ -21,6 +21,28 @@ The files included in this package are listed below.
 Data Generation
 ---
 
+### Dataframes
+
+#### Important columns
+
+Most columns in the given dataframes are self-explanatory.  However, there are a few worth mentioning.
+
+##### HMIS
+
+- `Subject Unique Identifier` is the global individual identifier in HMIS, (it links to `Clientid` in Connecting Point).
+- `Family Identifier` is the global family identifier in HMIS, (it links to `Familyid` in Connecting Point).
+- `Raw Subject Unique Identifier` is the raw individual identifier.
+- `Family Site Identifier` is the raw family identifier.
+- `Family?` is a boolean that indicates whether this person has ever or will ever enter with a family; this allows us to track individuals within families before and/or after they actually enter with a full family.
+
+##### Connecting Point
+
+- `Clientid` is the global individual identifier in Connecting Point, (it links to `Subject Unique Identifier` in HMIS).
+- `Familyid` is the global family identifier in Connecting Point, (it links to `Family Identifier` in HMIS).
+- `Raw Clientid` is the raw individual identifier.
+- `Caseid` is the raw family identifier.
+- `Family?` (same as in HMIS) is a boolean that indicates whether this person has ever or will ever enter with a family; this allows us to track individuals within families before and/or after they actually enter with a full family.
+
 ### Cleaning
 
 The bulk of the work done on this project was in data cleaning.  **clean.py** is the authoritative source on what cleaning was done, but a brief overview is provided here.
