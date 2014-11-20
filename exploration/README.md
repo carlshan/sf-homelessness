@@ -21,13 +21,22 @@ The files included in this package are listed below.
 Data Generation
 ---
 
-### Dataframes
+### Overview
 
-#### Important columns
+Put raw data in `../data/`.  Open a python shell or notebook:
 
-Most columns in the given dataframes are self-explanatory.  However, there are a few worth mentioning.
+```
+import pandas as pd
+import clean
 
-##### HMIS
+(hmis, cp) = clean.get_hmis_cp()
+```
+
+### Important columns in the data
+
+Most columns in the `hmis` and `cp` dataframes are self-explanatory.  However, there are a few worth mentioning.
+
+#### HMIS
 
 - `Subject Unique Identifier` is the global individual identifier in HMIS, (it links to `Clientid` in Connecting Point).
 - `Family Identifier` is the global family identifier in HMIS, (it links to `Familyid` in Connecting Point).
@@ -35,7 +44,7 @@ Most columns in the given dataframes are self-explanatory.  However, there are a
 - `Family Site Identifier` is the raw family identifier.
 - `Family?` is a boolean that indicates whether this person has ever or will ever enter with a family; this allows us to track individuals within families before and/or after they actually enter with a full family.
 
-##### Connecting Point
+#### Connecting Point
 
 - `Clientid` is the global individual identifier in Connecting Point, (it links to `Subject Unique Identifier` in HMIS).
 - `Familyid` is the global family identifier in Connecting Point, (it links to `Family Identifier` in HMIS).
