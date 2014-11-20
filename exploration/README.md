@@ -16,6 +16,7 @@ The files included in this package are listed below.
 
 - **clean.py** is the script we wrote to clean the data.  It is explained more below, in the section *Data Cleaning*, and is also annotated inline.
 - **util.py** is a package of a few utilities we wrote to assist with analysis.  It is annotated inline.
+- **data-exports.py** is a simple notebook for exporting data.
 - TODO explanations of notebooks we are (or are not?) including.
 
 Data Generation
