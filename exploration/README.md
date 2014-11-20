@@ -18,8 +18,10 @@ The files included in this package are listed below.
 - **util.py** is a package of a few utilities we wrote to assist with analysis.  It is annotated inline.
 - TODO explanations of notebooks we are (or are not?) including.
 
-Data Cleaning
+Data Generation
 ---
+
+### Cleaning
 
 The bulk of the work done on this project was in data cleaning.  **clean.py** is the authoritative source on what cleaning was done, but a brief overview is provided here.
 
@@ -36,7 +38,7 @@ and returns the dataframes with the raw identifiers moved to `Raw ...` columns, 
 - `hmis_child_status` and `cp_child_status` determine whether each person is a child or adult; and
 - `hmis_generate_family_characteristics` and `cp_generate_family_characteristics` determine other family characteristics, such as if the person is in a family for that record, and if they are ever in a family anywhere in the dataset.
 
-### De-duplicating individuals and determining families across time
+#### De-duplicating individuals and determining families across time
 
 De-duplicating individuals and determining families across time proved the hardest part of cleaning this dataset.
 
@@ -54,3 +56,34 @@ We devised the following methodology, relying on the concept of [connected compo
 - For each graph, enumerate all the connected components, and assign the same global individual and family identifier to each person in the individual and family connected components, respectively.
 
 This methodology assigns every record of the same person the same global individual identifier, (across datasets,) and assigns every record of a person in the same family the same global family identifier, (also across datasets).  This allows us to accurately see the unique families within and across datasets, (by avoiding double-counting families,) and allows us to connect families across datasets, (to see, for example, if the same family that left the waitlist entered shelter right after).
+
+### Data files
+
+Data files that will be processed in the cleaning step should live in `../data`.  The files that are required for cleaning to complete properly are below.
+
+- `../data/hmis/program with family.csv` is the `program` CSV that the City sent us, including the column `Family Site Identifier`.
+- `../data/hmis/client de-identified.csv` is the `client` CSV that the City sent us; this file was not updated when we got the new `program` file, so we use this subset of clients.
+- `../data/connecting_point/case.csv` is the `case` CSV exported from the Connecting Point spreadsheet document sheet `Case1`.
+- `../data/connecting_point/client.csv` is the `client` CSV exported from the Connecting Point spreadsheet document sheet `Clients`.
+- `../data/hmis/hmis_client_duplicates_link_plus.csv` is the *Link Plus* de-duplication CSV for HMIS the City sent us.
+- `../data/connecting_point/cp_client_duplicates_link_plus.csv` is the *Link Plus* de-duplication CSV for Connecting Point the City sent us.
+- `../data/matching/cp_hmis_match_results.csv` is the *RecLink* de-duplication CSV (across the two datasets) the City sent us.
+
+We are including in the package other, unused data files as well, but the files above are the only ones used for this project.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
