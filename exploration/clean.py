@@ -276,7 +276,7 @@ def hmis_generate_family_characteristics(hmis):
     :param hmis: HMIS dataframe.
     :type hmis: Pandas.Dataframe.
     """
-    return generate_family_characteristics(hmis, family_id='Family Identifier', edge_fields=['Family Site Identifier', 'Program Start Date'])
+    return generate_family_characteristics(hmis, family_id='Family Identifier', group_ids=['Family Site Identifier', 'Program Start Date'])
 
 def cp_generate_family_characteristics(cp):
     """
@@ -285,9 +285,9 @@ def cp_generate_family_characteristics(cp):
     :param cp: Connecting Point dataframe.
     :type cp: Pandas.Dataframe.
     """
-    return generate_family_characteristics(cp, family_id='Familyid', edge_fields=['Caseid'])
+    return generate_family_characteristics(cp, family_id='Familyid', group_ids=['Caseid'])
 
-def generate_family_characteristics(df, family_id, edge_fields):
+def generate_family_characteristics(df, family_id, group_ids):
     """
     Given either an HMIS or a Connecting Point dataframe, add columns regarding family structure.
 
@@ -297,11 +297,11 @@ def generate_family_characteristics(df, family_id, edge_fields):
     :param family_id: column name of family identifier.
     :type family_id: str.
 
-    :param edge_fields: grouping column names.
-    :type edge_fields: [str].
+    :param group_ids: grouping column names.
+    :type group_ids: [str].
     """
-    df['With Child?'] = df.groupby(edge_fields)['Child?'].transform(any)
-    df['With Adult?'] = df.groupby(edge_fields)['Adult?'].transform(any)
+    df['With Child?'] = df.groupby(group_ids)['Child?'].transform(any)
+    df['With Adult?'] = df.groupby(group_ids)['Adult?'].transform(any)
     df['With Family?'] = df['With Child?'] & df['With Adult?']
     df['Family?'] = df.groupby(family_id)['With Family?'].transform(any)
     return df
