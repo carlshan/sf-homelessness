@@ -7,61 +7,180 @@ import cp
 
 ADULT_AGE = 18
 
-def get_program():
-    program = pd.read_csv('../data/hmis/program with family.csv')
-
-    # join personal information
-    client_de_identified = pd.read_csv('../data/hmis/client de-identified.csv')
-    # we're taking an inner join here because the program csv got pulled after the client csv, because we added
-    # the family site identifier column to program
-    program = program.merge(client_de_identified , on='Subject Unique Identifier', how='inner')
+def get_hmis_cp():
+    # get raw dataframes
+    hmis = get_raw_hmis()
+    cp = get_raw_cp()
 
     # convert dates
-    program['Raw Program Start Date'] = program['Program Start Date']
-    program['Program Start Date'] = pd.to_datetime(program['Program Start Date'])
-    program['Raw Program End Date'] = program['Program End Date']
-    program['Program End Date'] = pd.to_datetime(program['Program End Date'])
-    program['Raw DOB'] = program['DOB']
-    program['DOB'] = pd.to_datetime(program['DOB'])
+    hmis = hmis_convert_dates(hmis)
+    cp = cp_convert_dates(cp)
 
-    # get age and child/adult status
-    program['Age Entered'] = program.apply(get_program_age_entered, axis=1)
-    program['Child?'] = program['Age Entered'] < ADULT_AGE
-    program['Adult?'] = ~program['Child?']
+    # compute client and family ids across the dataframes
+    (hmis, cp) = get_client_family_ids(hmis, cp)
 
-    # deduplicate individuals
-    program['Raw Subject Unique Identifier'] = program['Subject Unique Identifier']
-    #program['Subject Unique Identifier'] = program_strict_deduplicate_individuals(program)
-    program['Subject Unique Identifier'] = program_fuzzy_deduplicate_individuals(program)
-
-    # generate families
-    program['Family Identifier'] = program_generate_families(program)
+    # get child status
+    hmis = hmis_child_status(hmis)
+    cp = cp_child_status(cp)
 
     # generate family characteristics
-    program = program_generate_family_characteristics(program)
+    hmis_generate_family_characteristics(hmis)
+    cp_generate_family_characteristics(cp)
+
+    return (hmis, cp)
+
+###################
+# get_raw methods #
+###################
+
+def get_raw_hmis():
+    program = pd.read_csv('../data/hmis/program with family.csv')
+    client = pd.read_csv('../data/hmis/client de-identified.csv')
+    # NOTE we're taking an inner join here because the program csv got pulled after
+    # the client csv, because we added the family site identifier column to program
+    program = program.merge(client, on='Subject Unique Identifier', how='inner')
 
     return program
 
-# NOTE: this method isn't in use anymore.  If it starts being used again, we should generalize it to work with connecting
-# point data as well, like link_plus_deduplicate_individuals is.
-def program_strict_deduplicate_individuals(program):
-    # We do an inner join because, since we pulled the program data after doing de-duplication,
-    # there are some clients who appear in program but don't appear in hmis_client_duplicates.
-    hmis_client_duplicates = pd.read_csv('../data/hmis/hmis_client_duplicates_strict.csv')
-    program = program.merge(hmis_client_duplicates, on='Subject Unique Identifier', how='inner')
-    #program['Raw Subject Unique Identifier'] = program['Subject Unique Identifier']
-    return program['Duplicate ClientID'].fillna(program['Subject Unique Identifier'])
+def get_raw_cp():
+    case = pd.read_csv("../data/connecting_point/case.csv")
+    case = case.rename(columns={'caseid': 'Caseid'})
+    client = pd.read_csv("../data/connecting_point/client.csv")
+    case = case.merge(client, on='Caseid', how='left')
 
-def program_fuzzy_deduplicate_individuals(program):
-    return link_plus_deduplicate_individuals(program, 'Subject Unique Identifier', '../data/hmis/hmis_client_duplicates_link_plus.csv')
+    return case
 
-def program_generate_families(program):
-    return generate_families(program, ind_id='Subject Unique Identifier', fid='Family Site Identifier', edge_fields=['Family Site Identifier', 'Program Start Date'])
+#############################################
+# get_client_family_ids and related methods #
+#############################################
 
-def program_generate_family_characteristics(program):
-    return generate_family_characteristics(program, family_id='Family Identifier', edge_fields=['Family Site Identifier', 'Program Start Date'])
+def get_client_family_ids(hmis, cp):
+    hmis = hmis.rename(columns={'Subject Unique Identifier': 'Raw Subject Unique Identifier'})
+    cp = cp.rename(columns={'Clientid': 'Raw Clientid'})
 
-def get_program_age_entered(row):
+    # create individuals graph
+    G_individuals = nx.Graph()
+    G_individuals.add_nodes_from([('h', v) for v in hmis['Raw Subject Unique Identifier'].values])
+    G_individuals.add_nodes_from([('c', v) for v in cp['Raw Clientid'].values])
+
+    # add edges to compute individuals
+    G_individuals.add_edges_from(group_edges('h', pd.read_csv('../data/hmis/hmis_client_duplicates_link_plus.csv'), ['Set ID'], 'Subject Unique Identifier'))
+    G_individuals.add_edges_from(group_edges('c', pd.read_csv('../data/connecting_point/cp_client_duplicates_link_plus.csv'), ['Set ID'], 'Clientid'))
+    G_individuals.add_edges_from(matching_edges())
+
+    # copy individuals graph and add edges to compute families
+    G_families = G_individuals.copy()
+    G_families.add_edges_from(group_edges('h', hmis, ['Family Site Identifier','Program Start Date'], 'Raw Subject Unique Identifier'))
+    G_families.add_edges_from(group_edges('c', cp, ['Caseid'], 'Raw Clientid'))
+
+    # compute connected components and pull out ids for each dataframe for individuals and families
+    hmis_individuals = [get_ids_from_nodes('h', c) for c in nx.connected_components(G_individuals)]
+    cp_individuals = [get_ids_from_nodes('c', c) for c in nx.connected_components(G_individuals)]
+    hmis_families = [get_ids_from_nodes('h', c) for c in nx.connected_components(G_families)]
+    cp_families = [get_ids_from_nodes('c', c) for c in nx.connected_components(G_families)]
+
+    # create dataframes
+    hmis_individuals = create_dataframe_from_grouped_ids(hmis_individuals, 'Subject Unique Identifier')
+    hmis_families = create_dataframe_from_grouped_ids(hmis_families, 'Family Identifier')
+    cp_individuals = create_dataframe_from_grouped_ids(cp_individuals, 'Clientid')
+    cp_families = create_dataframe_from_grouped_ids(cp_families, 'Familyid')
+
+    # merge
+    hmis = hmis.merge(hmis_individuals, left_on='Raw Subject Unique Identifier', right_index=True, how='left')
+    hmis = hmis.merge(hmis_families, left_on='Raw Subject Unique Identifier', right_index=True, how='left')
+    cp = cp.merge(cp_individuals, left_on='Raw Clientid', right_index=True, how='left')
+    cp = cp.merge(cp_families, left_on='Raw Clientid', right_index=True, how='left')
+
+    return (hmis, cp)
+
+def group_edges(node_prefix, df, group_ids, individual_id):
+    """
+    group_edges returns the edge list from a grouping dataframe, either a Link Plus fuzzy matching,
+    or a dataframe where people are connected by appearing in the same family or case.
+
+    :param node_prefix: prefix for the nodes in the edge list.
+    :type edge_fields: str.
+
+    :param df: dataframe.
+    :type df: Pandas.Dataframe.
+
+    :param group_ids: grouping column names in grouping csv.
+    :type group_ids: str.
+
+    :param individual_id: individual id column name in grouping csv.
+    :type individual_id: str.
+    """
+    groups = df[group_ids+[individual_id]].dropna().drop_duplicates().set_index(group_ids)
+    edges = groups.merge(groups, left_index=True, right_index=True)
+    return [tuple(map(lambda v: (node_prefix, v), e)) for e in edges.values]
+
+def matching_edges():
+    """
+    matching_edges returns the edge list from a Connecting Point to HMIS matching csv.
+    """
+    matching = pd.read_csv('../data/matching/cp_hmis_match_results.csv').dropna()
+    return [(('c',v[0]),('h',v[1])) for v in matching[['clientid','Subject Unique Identifier']].values]
+
+def get_ids_from_nodes(node_prefix, nodes):
+    """
+    get_ids_from_subgraph takes a list of nodes from G and returns a list of the
+    ids contained in only the nodes with the given prefix.
+
+    param node_prefix: prefix for the nodes to keep.
+    type node_prefix: str.
+
+    param nodes: list of nodes from G.
+    type nodes: [(str, int)].
+    """
+    return map(lambda pair: pair[1], filter(lambda pair: pair[0] == node_prefix, nodes))
+
+def create_dataframe_from_grouped_ids(grouped_ids, col):
+    """
+    create_dataframe_from_grouped_ids takes a list of ids, grouped by individual or family, and creates
+    a dataframe where each id in a group has the same id in col.
+
+    param grouped_ids: a list of lists of ids.
+    type grouped_ids: [[int]].
+
+    param col: the name to give the single column in the dataframe.
+    type col: str.
+    """
+    return pd.DataFrame({col: pd.Series({id: idx for idx, ids in enumerate(grouped_ids) for id in ids})})
+
+#########################
+# convert_dates methods #
+#########################
+
+def hmis_convert_dates(hmis):
+    hmis['Raw Program Start Date'] = hmis['Program Start Date']
+    hmis['Program Start Date'] = pd.to_datetime(hmis['Program Start Date'])
+    hmis['Raw Program End Date'] = hmis['Program End Date']
+    hmis['Program End Date'] = pd.to_datetime(hmis['Program End Date'])
+    hmis['Raw DOB'] = hmis['DOB']
+    hmis['DOB'] = pd.to_datetime(hmis['DOB'])
+
+    return hmis
+
+def cp_convert_dates(cp):
+    cp['Raw servstart'] = cp['servstart']
+    cp['servstart'] = pd.to_datetime(cp['servstart'])
+    cp['Raw servend'] = cp['servend']
+    cp['servend'] = pd.to_datetime(cp['servend'])
+
+    return cp
+
+####################################
+# child_status and related methods #
+####################################
+
+def hmis_child_status(hmis):
+    hmis['Age Entered'] = hmis.apply(get_hmis_age_entered, axis=1)
+    hmis['Child?'] = hmis['Age Entered'] < ADULT_AGE
+    hmis['Adult?'] = ~hmis['Child?']
+
+    return hmis
+
+def get_hmis_age_entered(row):
     start_date = row['Program Start Date']
     dob = row['DOB']
     if start_date is pd.NaT or dob is pd.NaT:
@@ -69,102 +188,21 @@ def get_program_age_entered(row):
     else:
         return dateutil.relativedelta.relativedelta(start_date, dob).years
 
-def get_cp_client():
-    client = pd.read_csv("../data/connecting_point/client.csv")
+def cp_child_status(cp):
+    cp['Child?'] = cp['age'] < ADULT_AGE
+    cp['Adult?'] = ~cp['Child?']
 
-    # generate child/adult status
-    client['Child?'] = client['age'] < ADULT_AGE
-    client['Adult?'] = ~client['Child?']
+    return cp
 
-    # deduplicate individuals
-    client['Raw Clientid'] = client['Clientid']
-    client['Clientid'] = client_fuzzy_deduplicate_individuals(client)
+##############################################
+# family_characteristics and related methods #
+##############################################
 
-    # generate families
-    client['Familyid'] = client_generate_families(client)
+def hmis_generate_family_characteristics(hmis):
+    return generate_family_characteristics(hmis, family_id='Family Identifier', edge_fields=['Family Site Identifier', 'Program Start Date'])
 
-    # generate family characteristics
-    client = client_generate_family_characteristics(client)
-
-    client = client.merge(get_cp_case(), left_on='Caseid', right_on='caseid', how='right')
-
-    return client
-
-def get_cp_case():
-    case = pd.read_csv("../data/connecting_point/case.csv")
-
-    # join causes of homelessness
-    causes_of_homelessness = pd.read_csv("../data/connecting_point/causes_of_homelessness.csv")
-    causes_of_homelessness['HomelesscauseId'] = causes_of_homelessness['HomelesscauseId'].replace(cp.causes_of_homelessness)
-    causes_of_homelessness.columns = ['caseid','Homelesscause']
-    case = case.merge(causes_of_homelessness, on='caseid', how='left')
-
-    return case
-
-def client_fuzzy_deduplicate_individuals(client):
-    return link_plus_deduplicate_individuals(client, 'Clientid', '../data/connecting_point/cp_client_duplicates_link_plus.csv')
-
-def client_generate_families(client):
-    return generate_families(client, ind_id='Clientid', fid='Caseid', edge_fields=['Caseid'])
-
-def client_generate_family_characteristics(client):
-    return generate_family_characteristics(client, family_id='Familyid', edge_fields=['Caseid'])
-
-def link_plus_deduplicate_individuals(df, ind_id, lp_fname):
-    # name of deduplicated individual id column
-    dd_ind_id = 'Deduplicated '+ind_id
-    # generate dd_ind_id by finding the min ind_id for every group
-    lp_duplicates = pd.read_csv(lp_fname)
-    lp_duplicates = lp_duplicates.drop_duplicates(ind_id)
-    lp_duplicates[dd_ind_id] = lp_duplicates.groupby('Set ID')[ind_id].transform(min)
-    # merge those dd_ind_ids
-    return df.merge(lp_duplicates[[ind_id, dd_ind_id]], on=ind_id, how='left')[dd_ind_id].fillna(df[ind_id])
-
-# If persons A & B enter a shelter at the same time with the same Family Site Identifier, then we call them connected;
-# if persons B & C do the same, then we call them connected, and thus A & C are connected as well.
-def generate_families(df, ind_id, fid, edge_fields):
-    """Given a dataframe, find the family components by creating a graph, in which edges represent two individuals
-    appearing in the same program or case at the same time, and finding the connected components among the graph.
-
-    :param df: The dataframe to consider.
-    :type df: pandas.Dataframe.
-
-    :param ind_id: The column to use as the individual identifier, (e.g. 'Subject Unique Identifier' or 'Clientid').
-    :type ind_id: str.
-
-    :param fid: The field that represents the family or case (e.g. 'Family Site Identifier' or 'Caseid').  This field
-    gets filled in for individuals in order to properly generate family IDs for them.
-    :type fid: str.
-
-    :param edge_fields: The fields of df to consider when computing edges, (e.g. ['Family Site Identifier','Program
-    Start Date'] or ['Caseid']).
-    :type edge_fields: str or [str].
-
-    """
-    # begin by getting relevant fields
-    families = df[[ind_id]+edge_fields].copy()
-    # fill in individuals' FSI with their negated SUID
-    # NOTE: this assumes that no individual has a non-positive ind_id
-    families[fid] = families[fid].fillna(-families[ind_id])
-    families = families.set_index(edge_fields)
-
-    # join families on itself to get all first-degree connections: this is a two-column dataframe, where each row
-    # represents a pair of ind_ids that are directly connected to each other
-    edges = families.merge(families, left_index=True, right_index=True)
-    # create graph
-    G = nx.Graph([tuple(e) for e in edges.values])
-
-    # compute connected components
-    components = [f for f in nx.connected_components(G)]
-
-    # make bogus column name for temporary data frame that will be merged into larger dataframe.
-    target_fid = 'target_'+fid
-    # create a dataframe from the connected components: the index is the ind_id (iid) of the person, and the one column
-    # is the family of which they are a part
-    fids = pd.DataFrame({target_fid: pd.Series({iid: idx for idx, component in enumerate(components) for iid in component})})
-
-    # merge resulting dataframe with original df to index it correctly, then return the series of target_fids
-    return df.merge(fids, left_on=ind_id, right_index=True, how='left')[target_fid]
+def cp_generate_family_characteristics(cp):
+    return generate_family_characteristics(cp, family_id='Familyid', edge_fields=['Caseid'])
 
 def generate_family_characteristics(df, family_id, edge_fields):
     df['With Child?'] = df.groupby(edge_fields)['Child?'].transform(any)
