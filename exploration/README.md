@@ -1,7 +1,7 @@
 HMIS and Connecting Point cleaning and analysis
 ===
 
-**Compiled for the City of San Francisco Mayor's Office**
+**Compiled 20 November 2014 for the City of San Francisco Mayor's Office**
 
 *Carl Shan, Isaac Hollander McCreery, Brent Gaisford, Swati Jain, Bayes Impact*
 
@@ -38,4 +38,19 @@ and returns the dataframes with the raw identifiers moved to `Raw ...` columns, 
 
 ### De-duplicating individuals and determining families across time
 
-TODO
+De-duplicating individuals and determining families across time proved the hardest part of cleaning this dataset.
+
+In Connecting Point, if the same person or family enters the waitlist as before, there is no record that they are the same family: one must instead compare personally identifying fields, (e.g. name, birth date,) to determine who is the same individual, and from there, extrapolate who is in the same family.
+
+Similarly in HMIS, if the same person or family enters a different housing program as before, they may or may not be given the same `Family Site Identifier`, depending on if the programs are managed by the same organization.  So, like in Connecting Point, one must instead compare personally identifying fields, (e.g. name, birth date,) to determine who is the same individual, and from there, extrapolate who is in the same family.
+
+The City of San Francisco provided us, (Bayes Impact,) with fuzzy matchings across time within and between the two datasets, created using the *RecLink* and *Link Plus* probabilistic matching software, and we used those to generate global individual and family identifiers across the two datasets.
+
+We devised the following methodology, relying on the concept of [connected components](http://en.wikipedia.org/wiki/Connected_component_(graph_theory)) in graph theory.
+
+1. Create a graph where each vertex represents an individual identifier, either in HMIS or in Connecting Point.
+- Connect every pair of vertices in the graph that are said to be the same person by the fuzzy matchings provided by the City; this gives us a graph where each connected component represents exactly one person.
+- Duplicate the graph, and connect every pair of vertices in the graph that ever showed up together, either in Connecting Point, (with the same `Caseid`,) or in HMIS, (with the same `Family Site Identifier` issued on the same date); this gives us a graph where each connected component represents exactly one family.
+- For each graph, enumerate all the connected components, and assign the same global individual and family identifier to each person in the individual and family connected components, respectively.
+
+This methodology assigns every record of the same person the same global individual identifier, (across datasets,) and assigns every record of a person in the same family the same global family identifier, (also across datasets).  This allows us to accurately see the unique families within and across datasets, (by avoiding double-counting families,) and allows us to connect families across datasets, (to see, for example, if the same family that left the waitlist entered shelter right after).
