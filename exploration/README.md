@@ -17,7 +17,19 @@ The files included in this package are listed below.
 - **clean.py** is the script we wrote to clean the data.  It is explained more below, in the section *Data Cleaning*, and is also annotated inline.
 - **util.py** is a package of a few utilities we wrote to assist with analysis.  It is annotated inline.
 - **data-exports.py** is a simple notebook for exporting data.
-- TODO explanations of notebooks we are (or are not?) including.
+- **2014-11-04-hmis-metrics.ipynb** - This is an [iPython Notebook](www.ipython.org) that contains the Python code detailing how metrics for the HMIS data was calculated, and then visualized. The metrics this Notebook covers include:
+	- How many families are there currently in shelter?
+	- How many families entered the shelter system each year since 2009?
+	- How many families, and how many children have entered the shelter program since Jan 15 of 2014?
+	- What is the average and median homeless family size? How has that changed over time?
+	- How long did the average family stay in a shelter in each quarter over the past four years?
+	- What is the distribution of times families are spending in a shelter, and how has that changed over time?
+	- How many homeless families, and individuals have entered the shelter system as broken down by the specific shelter?
+	- How many families were in shelters on an average night in each quarter over the past four years
+- **2014-11-20-CP-metrics.ipynb** - This is an iPython Notebook detailing the calculation and visualization of metrics for the Connecting Point data. The metrics this Notebook covers include:
+	- How many families were on waitlist on an average night in each quarter over the past two years?
+	- What is the distribution of time spent by families on the waitlist, over the past few years?
+	- What is the average and minimum number of days spent by families on the waitlist, for each quarter in the past few years?
 
 Data Generation
 ---
@@ -102,20 +114,3 @@ Data files that will be processed in the cleaning step should live in `../data`.
 - `../data/matching/cp_hmis_match_results.csv` is the *RecLink* de-duplication CSV (across the two datasets) the City sent us.
 
 We are including in the package other, unused data files as well, but the files above are the only ones used for this project.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
