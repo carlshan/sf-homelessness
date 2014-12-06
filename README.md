@@ -3,7 +3,7 @@ HMIS and Connecting Point cleaning and analysis
 
 **Compiled 20 November 2014 for the City of San Francisco Mayor's Office**
 
-*Carl Shan, Isaac Hollander McCreery, Brent Gaisford, Swati Jain, Bayes Impact*
+*Carl Shan, Isaac Hollander McCreery, Brent Gaisford, Bayes Impact*
 
 Overview
 ---
